@@ -1,20 +1,18 @@
 import json
-import logging
 from typing import Any, Dict, List, Tuple
 
 import requests
 from app.core.event import eventmanager, Event
+from app.log import logger
 from app.schemas.types import EventType
 from app.plugins import _PluginBase
-
-logger = logging.getLogger(__name__)
 
 
 class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 订阅/下载/整理事件实时推送给 115sub。"
     plugin_icon = "link.png"
-    plugin_version = "0.0.2"
+    plugin_version = "0.0.3"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -30,6 +28,10 @@ class Plugin115Sub(_PluginBase):
         self._enabled = bool(config.get("enabled"))
         self._base_url = str(config.get("base_url") or "").strip().rstrip("/")
         self._secret = str(config.get("secret") or "").strip()
+        if self._enabled:
+            logger.info("115sub 插件已启用，目标地址：%s", self._base_url or "未配置")
+        else:
+            logger.info("115sub 插件未启用")
 
     def get_state(self):
         return self._enabled
@@ -130,6 +132,7 @@ class Plugin115Sub(_PluginBase):
                 timeout=10,
             )
             response.raise_for_status()
+            logger.info("115sub 联动事件推送成功: %s", event_name)
         except Exception as exc:
             logger.warning("115sub 联动事件推送失败: %s", exc)
 
