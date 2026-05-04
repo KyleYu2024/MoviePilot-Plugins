@@ -1,13 +1,15 @@
 {
   "Plugin115Sub": {
     "name": "115sub",
-    "description": "将 MoviePilot 订阅、下载与整理事件实时推送给 115sub。",
+    "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
     "labels": "联动",
-    "version": "0.0.3",
+    "version": "0.0.5",
     "icon": "icons/link.svg",
     "author": "KyleYu2024",
     "level": 1,
     "history": {
+      "v0.0.5": "移除空详情页声明，让插件列表点击直接进入配置入口，减少二次点击。",
+      "v0.0.4": "新增 115sub 占位/完成态接收接口，并在 MoviePilot 下载前拦截已由 115sub 接管或 Emby 已确认入库的集数。",
       "v0.0.3": "修复插件日志弹窗一直刷新不出日志的问题。",
       "v0.0.2": "修复 MoviePilot v2 插件 ID、目录与配置表单加载。",
       "v0.0.1": "初始化 MoviePilot -> 115sub 实时联动。"
