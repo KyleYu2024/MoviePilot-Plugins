@@ -10,14 +10,14 @@ from app.plugins import _PluginBase
 logger = logging.getLogger(__name__)
 
 
-class Plugin115SubLinkage(_PluginBase):
-    plugin_name = "115sub 订阅联动"
+class Plugin115Sub(_PluginBase):
+    plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 订阅/下载/整理事件实时推送给 115sub。"
     plugin_icon = "link.png"
     plugin_version = "1.0.0"
     plugin_author = "115sub"
     author_url = "https://github.com"
-    plugin_config_prefix = "plugin115sublinkage_"
+    plugin_config_prefix = "plugin115sub_"
     plugin_order = 10
     auth_level = 1
 

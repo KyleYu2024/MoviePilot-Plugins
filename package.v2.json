@@ -1,6 +1,6 @@
 {
-  "Plugin115SubLinkage": {
-    "name": "115sub 订阅联动",
+  "115sub": {
+    "name": "115sub",
     "description": "将 MoviePilot 订阅、下载与整理事件实时推送给 115sub。",
     "labels": "联动",
     "version": "1.0.0",
