@@ -5,8 +5,8 @@
 ## 目录结构
 
 - `package.v2.json`
-- `plugins.v2/plugin115sublinkage/__init__.py`
-- `plugins.v2/plugin115sublinkage/requirements.txt`
+- `plugins.v2/115sub/__init__.py`
+- `plugins.v2/115sub/requirements.txt`
 
 ## 安装
 
