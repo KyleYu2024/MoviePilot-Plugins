@@ -14,7 +14,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 订阅/下载/整理事件实时推送给 115sub。"
     plugin_icon = "link.png"
-    plugin_version = "1.0.1"
+    plugin_version = "0.0.1"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
