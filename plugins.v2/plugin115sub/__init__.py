@@ -1,8 +1,8 @@
 import json
 import logging
+from typing import Any, Dict, List, Tuple
 
 import requests
-from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.schemas.types import EventType
 from app.plugins import _PluginBase
@@ -34,29 +34,77 @@ class Plugin115Sub(_PluginBase):
     def get_state(self):
         return self._enabled
 
-    def get_form(self):
+    @staticmethod
+    def get_command() -> List[Dict[str, Any]]:
+        return []
+
+    def get_api(self) -> List[Dict[str, Any]]:
+        return []
+
+    def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [
             {
-                "component": "VSwitch",
-                "model": "enabled",
-                "label": "启用",
-            },
-            {
-                "component": "VTextField",
-                "model": "base_url",
-                "label": "115sub 地址",
-                "placeholder": "http://115sub:8000",
-            },
-            {
-                "component": "VTextField",
-                "model": "secret",
-                "label": "Webhook Secret",
+                "component": "VForm",
+                "content": [
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "enabled",
+                                            "label": "启用插件",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 8},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "base_url",
+                                            "label": "115sub 地址",
+                                            "placeholder": "http://115sub:8000",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "secret",
+                                            "label": "Webhook Secret",
+                                            "type": "password",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
             },
         ], {
             "enabled": False,
             "base_url": "",
             "secret": "",
         }
+
+    def get_page(self) -> List[dict]:
+        return []
+
+    def stop_service(self):
+        pass
 
     def _jsonable(self, value):
         try:
@@ -91,20 +139,6 @@ class Plugin115Sub(_PluginBase):
         if isinstance(data, dict):
             data.setdefault("event", "subscribe.added")
         self._post("subscribe.added", data)
-
-    @eventmanager.register(EventType.SubscribeModified)
-    def subscribe_modified(self, event: Event):
-        data = self._jsonable(event.event_data or {})
-        if isinstance(data, dict):
-            data.setdefault("event", "subscribe.modified")
-        self._post("subscribe.modified", data)
-
-    @eventmanager.register(EventType.SubscribeDeleted)
-    def subscribe_deleted(self, event: Event):
-        data = self._jsonable(event.event_data or {})
-        if isinstance(data, dict):
-            data.setdefault("event", "subscribe.deleted")
-        self._post("subscribe.deleted", data)
 
     @eventmanager.register(EventType.DownloadAdded)
     def download_added(self, event: Event):

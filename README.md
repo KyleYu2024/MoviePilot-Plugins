@@ -5,14 +5,14 @@
 ## 目录结构
 
 - `package.v2.json`
-- `plugins.v2/115sub/__init__.py`
-- `plugins.v2/115sub/requirements.txt`
+- `plugins.v2/plugin115sub/__init__.py`
+- `plugins.v2/plugin115sub/requirements.txt`
 
 ## 安装
 
 1. 将这个仓库推到 GitHub。
 2. 在 MoviePilot 的插件市场里把你的仓库地址加入 `PLUGIN_MARKET`。
-3. 刷新插件市场，安装 `115sub 订阅联动`。
+3. 刷新插件市场，安装 `115sub`。
 4. 在插件配置里填写：
    - `115sub 地址`
    - `Webhook Secret`
