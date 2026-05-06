@@ -12,7 +12,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.0.5"
+    plugin_version = "0.0.6"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -120,10 +120,38 @@ class Plugin115Sub(_PluginBase):
 
     def _jsonable(self, value):
         try:
-            json.dumps(value, ensure_ascii=False, default=str)
-            return value
-        except Exception:
             return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+        except Exception:
+            return str(value)
+
+    @staticmethod
+    def _event_label(event_name):
+        labels = {
+            "subscribe.added": "订阅新增",
+            "download.added": "下载任务新增",
+            "download.deleted": "下载任务删除",
+            "transfer.complete": "整理完成",
+        }
+        return labels.get(str(event_name or ""), str(event_name or "未知事件"))
+
+    @staticmethod
+    def _status_label(status):
+        labels = {
+            "processing": "占位中",
+            "completed": "已入库",
+            "failed": "失败",
+            "cancelled": "已取消",
+        }
+        return labels.get(str(status or "").lower(), str(status or "未知"))
+
+    @staticmethod
+    def _media_type_label(media_type):
+        value = str(media_type or "").lower()
+        if value in {"movie", "电影"}:
+            return "电影"
+        if value in {"tv", "series", "电视剧", "剧集"}:
+            return "剧集"
+        return str(media_type or "未知")
 
     def _post(self, event_name, event_data):
         if not self._enabled or not self._base_url or not self._secret:
@@ -142,9 +170,9 @@ class Plugin115Sub(_PluginBase):
                 timeout=10,
             )
             response.raise_for_status()
-            logger.info("115sub 联动事件推送成功: %s", event_name)
+            logger.info("115sub 联动事件推送成功：%s", self._event_label(event_name))
         except Exception as exc:
-            logger.warning("115sub 联动事件推送失败: %s", exc)
+            logger.warning("115sub 联动事件推送失败：事件=%s，错误=%s", self._event_label(event_name), exc)
 
     def _query_linkage(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not self._enabled or not self._base_url or not self._secret:
@@ -162,8 +190,8 @@ class Plugin115Sub(_PluginBase):
             data = response.json()
             return data if isinstance(data, dict) else {"success": False, "reason": "invalid_response"}
         except Exception as exc:
-            logger.warning("115sub 联动查询失败: %s", exc)
-            return {"success": False, "reason": "request_failed", "message": str(exc)}
+            logger.warning("115sub 联动查询失败：接口=%s，错误=%s", endpoint, exc)
+            return {"success": False, "reason": "request_failed", "message": f"请求 115sub 失败：{exc}"}
 
     def _status_key(self, tmdb_id, media_type, season, episode):
         try:
@@ -206,7 +234,14 @@ class Plugin115Sub(_PluginBase):
                 "source": data.get("source") or "115sub",
             }
             upserted += 1
-        logger.info("115sub 状态已接收: tmdb=%s season=%s episodes=%s status=%s", tmdb_id, season, episodes, status)
+        logger.info(
+            "115sub 状态已接收：TMDB=%s，类型=%s，第%s季，集数=%s，状态=%s",
+            tmdb_id,
+            self._media_type_label(media_type),
+            season,
+            episodes,
+            self._status_label(status),
+        )
         return {"success": True, "upserted": upserted}
 
     @eventmanager.register(EventType.SubscribeAdded)
@@ -301,11 +336,11 @@ class Plugin115Sub(_PluginBase):
             data.source = "115sub"
             data.reason = "115sub/Emby 已确认入库" if completed else "115sub 已占位"
             logger.info(
-                "115sub 本地状态命中，拦截 MoviePilot 下载: tmdb=%s season=%s episodes=%s status=%s",
+                "115sub 本地状态命中，已拦截 MoviePilot 下载：TMDB=%s，第%s季，集数=%s，状态=%s",
                 payload.get("tmdb_id"),
                 payload.get("season"),
                 payload.get("episodes"),
-                "completed" if completed else "processing",
+                self._status_label("completed" if completed else "processing"),
             )
             return
 
@@ -315,7 +350,7 @@ class Plugin115Sub(_PluginBase):
             data.source = "115sub"
             data.reason = result.get("message") or "115sub 已占位"
             logger.info(
-                "115sub 占位命中，拦截 MoviePilot 下载: tmdb=%s season=%s episodes=%s",
+                "115sub 占位命中，已拦截 MoviePilot 下载：TMDB=%s，第%s季，集数=%s",
                 payload.get("tmdb_id"),
                 payload.get("season"),
                 payload.get("episodes"),
