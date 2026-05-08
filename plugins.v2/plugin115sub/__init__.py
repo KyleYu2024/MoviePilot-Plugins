@@ -1,4 +1,5 @@
 import json
+import time
 from typing import Any, Dict, List, Tuple
 
 import requests
@@ -13,7 +14,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.0.7"
+    plugin_version = "0.0.8"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -23,11 +24,14 @@ class Plugin115Sub(_PluginBase):
     _enabled = False
     _base_url = ""
     _status_cache = {}
+    _warning_cooldown_until = {}
+    _warning_cooldown_seconds = 10 * 60
 
     def init_plugin(self, config=None):
         config = config or {}
         self._enabled = bool(config.get("enabled"))
         self._base_url = str(config.get("base_url") or "").strip().rstrip("/")
+        self._warning_cooldown_until = {}
         if self._enabled:
             logger.info("115sub 插件已启用，目标地址：%s", self._base_url or "未配置")
         else:
@@ -141,6 +145,27 @@ class Plugin115Sub(_PluginBase):
             return "剧集"
         return str(media_type or "未知")
 
+    def _should_log_warning(self, key: str) -> bool:
+        now = time.time()
+        if now < float(self._warning_cooldown_until.get(key) or 0):
+            return False
+        self._warning_cooldown_until[key] = now + self._warning_cooldown_seconds
+        return True
+
+    @staticmethod
+    def _request_error_summary(exc: Exception, token: str = "") -> str:
+        response = getattr(exc, "response", None)
+        if response is not None:
+            return f"HTTP {response.status_code} {response.reason}".strip()
+        text = str(exc)
+        if token:
+            text = text.replace(token, "***")
+        return f"{type(exc).__name__}: {text}"
+
+    @staticmethod
+    def _failure_reason(data: Dict[str, Any]) -> str:
+        return str((data or {}).get("reason") or (data or {}).get("message") or "unknown")
+
     def _post(self, event_name, event_data):
         token = self._api_token()
         if not self._enabled or not self._base_url or not token:
@@ -150,18 +175,30 @@ class Plugin115Sub(_PluginBase):
             "event_type": event_name,
             "data": self._jsonable(event_data),
             "source": "moviepilot",
+            "secret": token,
         }
         try:
             response = requests.post(
                 f"{self._base_url}/api/v1/moviepilot/linkage/event",
                 headers={"X-Moviepilot-Linkage-Secret": token},
+                params={"token": token},
                 json=payload,
                 timeout=10,
             )
             response.raise_for_status()
+            data = response.json() if response.content else {}
+            if isinstance(data, dict) and data.get("success") is False:
+                reason = self._failure_reason(data)
+                log_key = f"event:{event_name}:{reason}"
+                if self._should_log_warning(log_key):
+                    logger.warning("115sub 联动事件未被接收：事件=%s，原因=%s", self._event_label(event_name), reason)
+                return
             logger.info("115sub 联动事件推送成功：%s", self._event_label(event_name))
         except Exception as exc:
-            logger.warning("115sub 联动事件推送失败：事件=%s，错误=%s", self._event_label(event_name), exc)
+            error = self._request_error_summary(exc, token)
+            log_key = f"event:{event_name}:{error}"
+            if self._should_log_warning(log_key):
+                logger.warning("115sub 联动事件推送失败：事件=%s，错误=%s", self._event_label(event_name), error)
 
     def _query_linkage(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         token = self._api_token()
@@ -173,15 +210,24 @@ class Plugin115Sub(_PluginBase):
             response = requests.post(
                 f"{self._base_url}{endpoint}",
                 headers={"X-Moviepilot-Linkage-Secret": token},
+                params={"token": token},
                 json=payload,
                 timeout=10,
             )
             response.raise_for_status()
             data = response.json()
+            if isinstance(data, dict) and data.get("success") is False:
+                reason = self._failure_reason(data)
+                log_key = f"query:{endpoint}:{reason}"
+                if reason not in {"moviepilot_subscription_missing", "missing_episodes", "missing_tmdb_id"} and self._should_log_warning(log_key):
+                    logger.warning("115sub 联动查询未通过：接口=%s，原因=%s", endpoint, reason)
             return data if isinstance(data, dict) else {"success": False, "reason": "invalid_response"}
         except Exception as exc:
-            logger.warning("115sub 联动查询失败：接口=%s，错误=%s", endpoint, exc)
-            return {"success": False, "reason": "request_failed", "message": f"请求 115sub 失败：{exc}"}
+            error = self._request_error_summary(exc, token)
+            log_key = f"query:{endpoint}:{error}"
+            if self._should_log_warning(log_key):
+                logger.warning("115sub 联动查询失败：接口=%s，错误=%s", endpoint, error)
+            return {"success": False, "reason": "request_failed", "message": f"请求 115sub 失败：{error}"}
 
     def _status_key(self, tmdb_id, media_type, season, episode):
         try:
@@ -345,3 +391,9 @@ class Plugin115Sub(_PluginBase):
                 payload.get("season"),
                 payload.get("episodes"),
             )
+            return
+
+        if payload.get("tmdb_id") and payload.get("episodes"):
+            notify_payload = dict(payload)
+            notify_payload.setdefault("event", "download.added")
+            self._post("download.added", notify_payload)
