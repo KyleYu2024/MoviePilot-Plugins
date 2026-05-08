@@ -13,10 +13,10 @@
 1. 将这个仓库推到 GitHub。
 2. 在 MoviePilot 的插件市场里把你的仓库地址加入 `PLUGIN_MARKET`。
 3. 刷新插件市场，安装 `115sub`。
-4. 在插件配置里填写：
-   - `115sub 地址`
-   - `Webhook Secret`
-5. 在 115sub 设置页开启 MoviePilot 联动，并保存 secret。
+4. 在插件配置里填写 `115sub 地址`。
+5. 在 115sub 设置页开启 MoviePilot 联动，并填写 MoviePilot 的 `API_TOKEN`。
+
+插件会直接复用 MoviePilot 自身的 `API_TOKEN` 与 115sub 对接，不需要额外维护 Webhook Secret。
 
 ## 说明
 

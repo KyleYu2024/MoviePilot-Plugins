@@ -2,6 +2,7 @@ import json
 from typing import Any, Dict, List, Tuple
 
 import requests
+from app.core.config import settings
 from app.core.event import eventmanager, Event
 from app.log import logger
 from app.schemas.types import EventType, ChainEventType
@@ -12,7 +13,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.0.6"
+    plugin_version = "0.0.7"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -21,14 +22,12 @@ class Plugin115Sub(_PluginBase):
 
     _enabled = False
     _base_url = ""
-    _secret = ""
     _status_cache = {}
 
     def init_plugin(self, config=None):
         config = config or {}
         self._enabled = bool(config.get("enabled"))
         self._base_url = str(config.get("base_url") or "").strip().rstrip("/")
-        self._secret = str(config.get("secret") or "").strip()
         if self._enabled:
             logger.info("115sub 插件已启用，目标地址：%s", self._base_url or "未配置")
         else:
@@ -88,20 +87,6 @@ class Plugin115Sub(_PluginBase):
                                     }
                                 ],
                             },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "secret",
-                                            "label": "Webhook Secret",
-                                            "type": "password",
-                                        },
-                                    }
-                                ],
-                            },
                         ],
                     }
                 ],
@@ -109,7 +94,6 @@ class Plugin115Sub(_PluginBase):
         ], {
             "enabled": False,
             "base_url": "",
-            "secret": "",
         }
 
     def get_page(self) -> List[dict]:
@@ -123,6 +107,10 @@ class Plugin115Sub(_PluginBase):
             return json.loads(json.dumps(value, ensure_ascii=False, default=str))
         except Exception:
             return str(value)
+
+    @staticmethod
+    def _api_token():
+        return str(getattr(settings, "API_TOKEN", "") or "").strip()
 
     @staticmethod
     def _event_label(event_name):
@@ -154,7 +142,8 @@ class Plugin115Sub(_PluginBase):
         return str(media_type or "未知")
 
     def _post(self, event_name, event_data):
-        if not self._enabled or not self._base_url or not self._secret:
+        token = self._api_token()
+        if not self._enabled or not self._base_url or not token:
             return
         payload = {
             "event": event_name,
@@ -165,7 +154,7 @@ class Plugin115Sub(_PluginBase):
         try:
             response = requests.post(
                 f"{self._base_url}/api/v1/moviepilot/linkage/event",
-                headers={"X-Moviepilot-Linkage-Secret": self._secret},
+                headers={"X-Moviepilot-Linkage-Secret": token},
                 json=payload,
                 timeout=10,
             )
@@ -175,14 +164,15 @@ class Plugin115Sub(_PluginBase):
             logger.warning("115sub 联动事件推送失败：事件=%s，错误=%s", self._event_label(event_name), exc)
 
     def _query_linkage(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not self._enabled or not self._base_url or not self._secret:
+        token = self._api_token()
+        if not self._enabled or not self._base_url or not token:
             return {"success": False, "reason": "plugin_disabled"}
         payload = dict(payload or {})
-        payload.setdefault("secret", self._secret)
+        payload.setdefault("secret", token)
         try:
             response = requests.post(
                 f"{self._base_url}{endpoint}",
-                headers={"X-Moviepilot-Linkage-Secret": self._secret},
+                headers={"X-Moviepilot-Linkage-Secret": token},
                 json=payload,
                 timeout=10,
             )
