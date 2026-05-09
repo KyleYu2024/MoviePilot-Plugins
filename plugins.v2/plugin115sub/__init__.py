@@ -14,7 +14,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.0.8"
+    plugin_version = "0.0.9"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -145,6 +145,60 @@ class Plugin115Sub(_PluginBase):
             return "剧集"
         return str(media_type or "未知")
 
+    @staticmethod
+    def _clean_text(value):
+        text = str(value or "").strip()
+        if not text or text.lower() in {"none", "null"}:
+            return ""
+        return text
+
+    @classmethod
+    def _first_text(cls, *values):
+        for value in values:
+            text = cls._clean_text(value)
+            if text:
+                return text
+        return ""
+
+    @classmethod
+    def _field_text(cls, source, *names):
+        if not source:
+            return ""
+        for name in names:
+            value = None
+            if isinstance(source, dict):
+                value = source.get(name)
+            else:
+                value = getattr(source, name, None)
+            text = cls._clean_text(value)
+            if text:
+                return text
+        return ""
+
+    @classmethod
+    def _payload_title(cls, data: Dict[str, Any]) -> str:
+        return cls._first_text(
+            cls._field_text(data, "title", "name", "media_title", "media_name", "title_cn", "original_title"),
+            cls._field_text(data.get("media") if isinstance(data, dict) else None, "title", "name", "original_title"),
+        )
+
+    @classmethod
+    def _context_title(cls, media, meta) -> str:
+        return cls._first_text(
+            cls._field_text(media, "title", "name", "original_title", "cn_name", "title_year"),
+            cls._field_text(meta, "title", "name", "org_string", "cn_name", "original_title"),
+        )
+
+    @classmethod
+    def _media_log_label(cls, title, tmdb_id):
+        title = cls._clean_text(title)
+        if title:
+            return f"片名=《{title}》"
+        tmdb_id = cls._clean_text(tmdb_id)
+        if tmdb_id:
+            return f"TMDB={tmdb_id}"
+        return "片名=未知"
+
     def _should_log_warning(self, key: str) -> bool:
         now = time.time()
         if now < float(self._warning_cooldown_until.get(key) or 0):
@@ -246,6 +300,7 @@ class Plugin115Sub(_PluginBase):
         media_type = str(data.get("type") or "tv").strip().lower()
         season = int(data.get("season") or 0)
         status = str(data.get("status") or "processing").strip().lower()
+        title = self._payload_title(data)
         episodes = data.get("episodes") or [0 if media_type == "movie" else data.get("episode")]
         if not isinstance(episodes, (list, tuple, set)):
             episodes = [episodes]
@@ -266,13 +321,14 @@ class Plugin115Sub(_PluginBase):
                 "season": season,
                 "episode": episode,
                 "status": status,
+                "title": title,
                 "updated_at": data.get("updated_at") or "",
                 "source": data.get("source") or "115sub",
             }
             upserted += 1
         logger.info(
-            "115sub 状态已接收：TMDB=%s，类型=%s，第%s季，集数=%s，状态=%s",
-            tmdb_id,
+            "115sub 状态已接收：%s，类型=%s，第%s季，集数=%s，状态=%s",
+            self._media_log_label(title, tmdb_id),
             self._media_type_label(media_type),
             season,
             episodes,
@@ -354,6 +410,7 @@ class Plugin115Sub(_PluginBase):
 
         payload = {
             "tmdb_id": getattr(media, "tmdb_id", "") or getattr(meta, "tmdb_id", "") or "",
+            "title": self._context_title(media, meta),
             "type": media_type_text,
             "season": season,
             "episodes": episodes,
@@ -372,8 +429,8 @@ class Plugin115Sub(_PluginBase):
             data.source = "115sub"
             data.reason = "115sub/Emby 已确认入库" if completed else "115sub 已占位"
             logger.info(
-                "115sub 本地状态命中，已拦截 MoviePilot 下载：TMDB=%s，第%s季，集数=%s，状态=%s",
-                payload.get("tmdb_id"),
+                "115sub 本地状态命中，已拦截 MoviePilot 下载：%s，第%s季，集数=%s，状态=%s",
+                self._media_log_label(payload.get("title") or cached_rows[0].get("title"), payload.get("tmdb_id")),
                 payload.get("season"),
                 payload.get("episodes"),
                 self._status_label("completed" if completed else "processing"),
@@ -386,8 +443,8 @@ class Plugin115Sub(_PluginBase):
             data.source = "115sub"
             data.reason = result.get("message") or "115sub 已占位"
             logger.info(
-                "115sub 占位命中，已拦截 MoviePilot 下载：TMDB=%s，第%s季，集数=%s",
-                payload.get("tmdb_id"),
+                "115sub 占位命中，已拦截 MoviePilot 下载：%s，第%s季，集数=%s",
+                self._media_log_label(payload.get("title"), payload.get("tmdb_id")),
                 payload.get("season"),
                 payload.get("episodes"),
             )

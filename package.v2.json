@@ -3,11 +3,12 @@
     "name": "115sub",
     "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
     "labels": "联动",
-    "version": "0.0.8",
+    "version": "0.0.9",
     "icon": "icons/link.svg",
     "author": "KyleYu2024",
     "level": 1,
     "history": {
+      "v0.0.9": "插件日志优先显示片名，并兼容 115sub 状态回写携带的订阅标题。",
       "v0.0.8": "补齐 115sub 鉴权 token 传法，并对联动请求失败日志做限频和脱敏，避免配置异常时刷屏。",
       "v0.0.7": "移除 Webhook Secret 配置，直接复用 MoviePilot API_TOKEN 与 115sub 对接。",
       "v0.0.6": "修复复杂事件对象 JSON 序列化失败，并将插件联动日志尽量中文化显示。",
