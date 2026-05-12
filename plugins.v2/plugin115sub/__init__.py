@@ -17,7 +17,7 @@ class Plugin115Sub(_PluginBase):
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
     plugin_version = "0.1.3"
-    plugin_author = "KyleYu2024"
+    plugin_author = "KyleYu"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
     plugin_order = 10
