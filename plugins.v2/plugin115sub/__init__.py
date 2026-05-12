@@ -1,5 +1,4 @@
 import json
-import logging
 import re
 import threading
 import time
@@ -17,7 +16,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.1.1"
+    plugin_version = "0.1.2"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -34,7 +33,10 @@ class Plugin115Sub(_PluginBase):
     _active_instance = None
     _downloadchain_patched = False
     _downloadchain_original_get_no_exists_info = None
-    _plugin_info_log_filter = None
+    _logger_patched = False
+    _logger_patch_mode = ""
+    _original_logger_info = None
+    _original_logger_warning = None
 
     def init_plugin(self, config=None):
         config = config or {}
@@ -43,7 +45,7 @@ class Plugin115Sub(_PluginBase):
         self._warning_cooldown_until = {}
         self._subscribe_search_cooldown_until = {}
         self.__class__._active_instance = self
-        self._configure_plugin_info_logging()
+        self._install_log_noise_patch()
         self._install_downloadchain_patch()
         if self._enabled:
             logger.info("115sub 插件已启用，目标地址：%s", self._base_url or "未配置")
@@ -119,72 +121,69 @@ class Plugin115Sub(_PluginBase):
     def stop_service(self):
         if self.__class__._active_instance is self:
             self.__class__._active_instance = None
-        self._remove_plugin_info_log_filter()
-
-    class _PluginInfoLogFilter(logging.Filter):
-        def filter(self, record):
-            if record.levelno != logging.INFO:
-                return False
-            source = " ".join(
-                str(value or "")
-                for value in (
-                    getattr(record, "name", ""),
-                    getattr(record, "pathname", ""),
-                    getattr(record, "module", ""),
-                    getattr(record, "msg", ""),
-                )
-            ).lower()
-            return "plugin115sub" in source or "115sub" in source
 
     @classmethod
-    def _get_plugin_info_log_filter(cls):
-        if cls._plugin_info_log_filter is None:
-            cls._plugin_info_log_filter = cls._PluginInfoLogFilter()
-        return cls._plugin_info_log_filter
+    def _format_log_message(cls, message, args, kwargs):
+        text = str(message or "")
+        if not args:
+            return text
+        try:
+            return text % args
+        except Exception:
+            pass
+        try:
+            return text.format(*args, **kwargs)
+        except Exception:
+            return " ".join([text, *(str(arg) for arg in args)])
 
     @classmethod
-    def _iter_logging_filter_targets(cls):
-        seen = set()
-
-        def add(target):
-            if target and id(target) not in seen:
-                seen.add(id(target))
-                yield target
-
-        for target in add(logging.getLogger("emby")):
-            yield target
-        for target in add(logging.getLogger()):
-            yield target
-        for logger_obj in list(logging.Logger.manager.loggerDict.values()):
-            if isinstance(logger_obj, logging.Logger):
-                for handler in getattr(logger_obj, "handlers", []) or []:
-                    for target in add(handler):
-                        yield target
-        for handler in getattr(logging.getLogger(), "handlers", []) or []:
-            for target in add(handler):
-                yield target
+    def _should_suppress_info(cls, message, args, kwargs):
+        text = cls._format_log_message(message, args, kwargs)
+        if "在媒体库 " in text and " 中找到了这些季集" in text:
+            return True
+        if "没有在媒体库 " in text:
+            return True
+        if "115sub 原始下载任务事件缺少 TMDB ID" in text:
+            return True
+        if "115sub 下载占位跳过" in text:
+            return True
+        if "115sub 下载任务事件暂未接收" in text:
+            return True
+        return False
 
     @classmethod
-    def _remove_plugin_info_log_filter(cls):
-        info_filter = cls._plugin_info_log_filter
-        if not info_filter:
+    def _should_suppress_warning(cls, message, args, kwargs):
+        text = cls._format_log_message(message, args, kwargs)
+        return text.startswith("115sub ")
+
+    @classmethod
+    def _install_log_noise_patch(cls):
+        if cls._logger_patched:
             return
-        for target in cls._iter_logging_filter_targets():
-            try:
-                target.removeFilter(info_filter)
-            except Exception:
-                continue
-
-    def _configure_plugin_info_logging(self):
-        self._remove_plugin_info_log_filter()
-        if not self._enabled:
+        original_info = getattr(logger, "info", None)
+        original_warning = getattr(logger, "warning", None)
+        if not original_info or not original_warning:
             return
-        info_filter = self._get_plugin_info_log_filter()
-        for target in self._iter_logging_filter_targets():
-            try:
-                target.addFilter(info_filter)
-            except Exception:
-                continue
+
+        def patched_info(message, *args, **kwargs):
+            if cls._should_suppress_info(message, args, kwargs):
+                return None
+            return original_info(message, *args, **kwargs)
+
+        def patched_warning(message, *args, **kwargs):
+            if cls._should_suppress_warning(message, args, kwargs):
+                return None
+            return original_warning(message, *args, **kwargs)
+
+        try:
+            setattr(logger, "info", patched_info)
+            setattr(logger, "warning", patched_warning)
+            cls._logger_patch_mode = "instance"
+        except Exception:
+            return
+        cls._original_logger_info = original_info
+        cls._original_logger_warning = original_warning
+        cls._logger_patched = True
 
     def _jsonable(self, value):
         try:

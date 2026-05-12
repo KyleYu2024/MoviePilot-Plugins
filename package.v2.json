@@ -3,11 +3,12 @@
     "name": "115sub",
     "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
     "labels": "联动",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "icon": "icons/link.svg",
     "author": "KyleYu2024",
     "level": 1,
     "history": {
+      "v0.1.2": "改为按 MoviePilot 实际日志输出方法过滤 Emby 扫库噪音和无意义 115sub 提示，保留占位拦截、状态接收等关键 INFO。",
       "v0.1.1": "收敛 MoviePilot 日志展示，只保留 115sub 关键 INFO，隐藏无意义 warning 与 Emby 扫库噪音。",
       "v0.1.0": "115sub 占位失败/取消时自动触发对应 MoviePilot 订阅立即搜索，尽快补回实际缺失集。",
       "v0.0.11": "MoviePilot 计算缺失集时合并 115sub 占位/入库状态，让多集种子拆包时跳过已由 115sub 接管的集数。",
