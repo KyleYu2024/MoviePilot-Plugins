@@ -13,7 +13,7 @@ from app.plugins import _PluginBase
 
 
 class Plugin115Sub(_PluginBase):
-    plugin_name = "115sub"
+    plugin_name = "115sub订阅联动"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
     plugin_version = "0.1.3"
