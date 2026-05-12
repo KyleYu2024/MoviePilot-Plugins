@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import threading
 import time
@@ -16,7 +17,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.1.0"
+    plugin_version = "0.1.1"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -33,6 +34,7 @@ class Plugin115Sub(_PluginBase):
     _active_instance = None
     _downloadchain_patched = False
     _downloadchain_original_get_no_exists_info = None
+    _plugin_info_log_filter = None
 
     def init_plugin(self, config=None):
         config = config or {}
@@ -41,6 +43,7 @@ class Plugin115Sub(_PluginBase):
         self._warning_cooldown_until = {}
         self._subscribe_search_cooldown_until = {}
         self.__class__._active_instance = self
+        self._configure_plugin_info_logging()
         self._install_downloadchain_patch()
         if self._enabled:
             logger.info("115sub 插件已启用，目标地址：%s", self._base_url or "未配置")
@@ -116,6 +119,72 @@ class Plugin115Sub(_PluginBase):
     def stop_service(self):
         if self.__class__._active_instance is self:
             self.__class__._active_instance = None
+        self._remove_plugin_info_log_filter()
+
+    class _PluginInfoLogFilter(logging.Filter):
+        def filter(self, record):
+            if record.levelno != logging.INFO:
+                return False
+            source = " ".join(
+                str(value or "")
+                for value in (
+                    getattr(record, "name", ""),
+                    getattr(record, "pathname", ""),
+                    getattr(record, "module", ""),
+                    getattr(record, "msg", ""),
+                )
+            ).lower()
+            return "plugin115sub" in source or "115sub" in source
+
+    @classmethod
+    def _get_plugin_info_log_filter(cls):
+        if cls._plugin_info_log_filter is None:
+            cls._plugin_info_log_filter = cls._PluginInfoLogFilter()
+        return cls._plugin_info_log_filter
+
+    @classmethod
+    def _iter_logging_filter_targets(cls):
+        seen = set()
+
+        def add(target):
+            if target and id(target) not in seen:
+                seen.add(id(target))
+                yield target
+
+        for target in add(logging.getLogger("emby")):
+            yield target
+        for target in add(logging.getLogger()):
+            yield target
+        for logger_obj in list(logging.Logger.manager.loggerDict.values()):
+            if isinstance(logger_obj, logging.Logger):
+                for handler in getattr(logger_obj, "handlers", []) or []:
+                    for target in add(handler):
+                        yield target
+        for handler in getattr(logging.getLogger(), "handlers", []) or []:
+            for target in add(handler):
+                yield target
+
+    @classmethod
+    def _remove_plugin_info_log_filter(cls):
+        info_filter = cls._plugin_info_log_filter
+        if not info_filter:
+            return
+        for target in cls._iter_logging_filter_targets():
+            try:
+                target.removeFilter(info_filter)
+            except Exception:
+                continue
+
+    def _configure_plugin_info_logging(self):
+        self._remove_plugin_info_log_filter()
+        if not self._enabled:
+            return
+        info_filter = self._get_plugin_info_log_filter()
+        for target in self._iter_logging_filter_targets():
+            try:
+                target.addFilter(info_filter)
+            except Exception:
+                continue
 
     def _jsonable(self, value):
         try:
@@ -500,15 +569,10 @@ class Plugin115Sub(_PluginBase):
                             event_context,
                         )
                     return
-                if self._should_log_warning(log_key):
-                    logger.warning("115sub 联动事件未被接收：事件=%s，原因=%s%s", self._event_label(event_name), reason, event_context)
                 return
             logger.info("115sub 联动事件推送成功：%s%s", self._event_label(event_name), event_context)
-        except Exception as exc:
-            error = self._request_error_summary(exc, token)
-            log_key = f"event:{event_name}:{error}"
-            if self._should_log_warning(log_key):
-                logger.warning("115sub 联动事件推送失败：事件=%s，错误=%s%s", self._event_label(event_name), error, event_context)
+        except Exception:
+            return
 
     def _query_linkage(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         token = self._api_token()
@@ -526,17 +590,9 @@ class Plugin115Sub(_PluginBase):
             )
             response.raise_for_status()
             data = response.json()
-            if isinstance(data, dict) and data.get("success") is False:
-                reason = self._failure_reason(data)
-                log_key = f"query:{endpoint}:{reason}"
-                if reason not in {"moviepilot_subscription_missing", "missing_episodes", "missing_tmdb_id"} and self._should_log_warning(log_key):
-                    logger.warning("115sub 联动查询未通过：接口=%s，原因=%s%s", endpoint, reason, self._event_log_context(payload))
             return data if isinstance(data, dict) else {"success": False, "reason": "invalid_response"}
         except Exception as exc:
             error = self._request_error_summary(exc, token)
-            log_key = f"query:{endpoint}:{error}"
-            if self._should_log_warning(log_key):
-                logger.warning("115sub 联动查询失败：接口=%s，错误=%s%s", endpoint, error, self._event_log_context(payload))
             return {"success": False, "reason": "request_failed", "message": f"请求 115sub 失败：{error}"}
 
     def _install_downloadchain_patch(self):
@@ -711,8 +767,7 @@ class Plugin115Sub(_PluginBase):
             return []
         try:
             from app.db.subscribe_oper import SubscribeOper
-        except Exception as exc:
-            logger.warning("115sub 占位失败后查找 MoviePilot 订阅失败：%s", exc)
+        except Exception:
             return []
 
         try:
@@ -727,8 +782,7 @@ class Plugin115Sub(_PluginBase):
                 if subscribes:
                     return subscribes
             return SubscribeOper().list_by_tmdbid(tmdbid=tmdb_value, season=None) or []
-        except Exception as exc:
-            logger.warning("115sub 占位失败后查找 MoviePilot 订阅异常：TMDB=%s，错误=%s", tmdb_text, exc)
+        except Exception:
             return []
 
     def _trigger_moviepilot_subscribe_search(self, *, tmdb_id, media_type, season, episodes, title):
@@ -771,8 +825,8 @@ class Plugin115Sub(_PluginBase):
                         target_subscribe_id,
                         self._event_log_context({"tmdb_id": tmdb_id, "title": title, "type": media_type, "season": season, "episodes": episodes}),
                     )
-                except Exception as exc:
-                    logger.warning("115sub 占位失败触发 MoviePilot 订阅搜索失败：订阅ID=%s，错误=%s", target_subscribe_id, exc)
+                except Exception:
+                    return
 
             threading.Thread(target=run_search, name=f"plugin115sub-search-{subscribe_id}", daemon=True).start()
 
