@@ -16,7 +16,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "link.png"
-    plugin_version = "0.1.2"
+    plugin_version = "0.1.3"
     plugin_author = "KyleYu2024"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -569,7 +569,7 @@ class Plugin115Sub(_PluginBase):
                         )
                     return
                 return
-            logger.info("115sub 联动事件推送成功：%s%s", self._event_label(event_name), event_context)
+            logger.info("115sub 联动事件推送成功：moviepilot%s%s", self._event_label(event_name), event_context)
         except Exception:
             return
 
@@ -876,7 +876,7 @@ class Plugin115Sub(_PluginBase):
             }
             upserted += 1
         logger.info(
-            "115sub 状态已接收%s，状态=%s",
+            "115sub 转存状态已接收%s，状态=%s",
             self._event_log_context({"tmdb_id": tmdb_id, "title": title, "type": media_type, "season": season, "episodes": episodes}),
             self._status_label(status),
         )
