@@ -21,7 +21,7 @@ class Plugin115Sub(_PluginBase):
     plugin_icon = "https://img.andp.cc/icons/upload/115sub-logo.png"
     plugin_version = "0.1.5"
     plugin_author = "KyleYu"
-    author_url = ""
+    author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
     plugin_order = 10
     auth_level = 1
