@@ -1,13 +1,16 @@
 import json
+import logging
 import re
+import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import requests
 from app.core.config import settings
 from app.core.event import eventmanager, Event
-from app.log import logger
+from app.log import LoggerManager, log_settings, logger
 from app.schemas.types import EventType, ChainEventType
 from app.plugins import _PluginBase
 
@@ -15,10 +18,10 @@ from app.plugins import _PluginBase
 class Plugin115Sub(_PluginBase):
     plugin_name = "115sub订阅联动"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
-    plugin_icon = "link.png"
-    plugin_version = "0.1.3"
+    plugin_icon = "Linkace_C.png"
+    plugin_version = "0.1.4"
     plugin_author = "KyleYu"
-    author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
+    author_url = ""
     plugin_config_prefix = "plugin115sub_"
     plugin_order = 10
     auth_level = 1
@@ -37,6 +40,10 @@ class Plugin115Sub(_PluginBase):
     _logger_patch_mode = ""
     _original_logger_info = None
     _original_logger_warning = None
+    _original_logger_debug = None
+    _original_logger_error = None
+    _original_logger_critical = None
+    _original_logger_logger = None
 
     def init_plugin(self, config=None):
         config = config or {}
@@ -157,32 +164,144 @@ class Plugin115Sub(_PluginBase):
         return text.startswith("115sub ")
 
     @classmethod
+    def _is_logger_patch_frame(cls, frame):
+        name = getattr(getattr(frame, "f_code", None), "co_name", "")
+        if name in {
+            "patched_method",
+            "patched_logger",
+            "_format_log_message",
+            "_is_logger_patch_frame",
+            "_log_call_context",
+            "_should_keep_plugin_log",
+            "_should_suppress_info",
+            "_should_suppress_warning",
+        }:
+            return True
+        try:
+            filepath = str(frame.f_code.co_filename).replace("\\", "/")
+        except Exception:
+            return False
+        return filepath.endswith("/app/log.py") or filepath.endswith("/app/app/log.py")
+
+    @classmethod
+    def _log_call_context(cls):
+        caller_name = None
+        plugin_name = None
+        try:
+            frame = sys._getframe(2)  # noqa
+        except (AttributeError, ValueError):
+            return "log.py", None
+
+        while frame:
+            if cls._is_logger_patch_frame(frame):
+                frame = frame.f_back
+                continue
+
+            filepath = str(frame.f_code.co_filename)
+            normalized = filepath.replace("\\", "/")
+            parts = tuple(part for part in normalized.split("/") if part)
+
+            if not caller_name:
+                if parts and parts[-1] == "__init__.py" and len(parts) >= 2:
+                    caller_name = parts[-2]
+                elif parts:
+                    caller_name = parts[-1]
+                else:
+                    caller_name = "log.py"
+
+            if "app" in parts:
+                if not plugin_name and "plugins" in parts:
+                    try:
+                        plugins_index = parts.index("plugins")
+                        if plugins_index + 1 < len(parts):
+                            plugin_candidate = parts[plugins_index + 1]
+                            plugin_name = "plugin" if plugin_candidate == "__init__.py" else plugin_candidate
+                            break
+                    except ValueError:
+                        pass
+                if "main.py" in parts:
+                    break
+            elif len(parts) != 1:
+                break
+
+            frame = frame.f_back
+
+        return caller_name or "log.py", plugin_name
+
+    @classmethod
+    def _should_keep_plugin_log(cls, method, message, args, kwargs, caller_name):
+        text = cls._format_log_message(message, args, kwargs).strip()
+        method = str(method or "").lower()
+
+        if method != "info":
+            return False
+        if cls._should_suppress_info(message, args, kwargs):
+            return False
+
+        allowed_prefixes = (
+            "115sub 插件已启用",
+            "115sub 插件未启用",
+            "115sub 已接入 MoviePilot 缺失集判断",
+            "115sub 联动事件推送成功",
+            "115sub 占位已合并到 MoviePilot 缺失集判断",
+            "115sub 占位失败已接收",
+            "115sub 占位失败触发 MoviePilot 订阅搜索冷却中",
+            "115sub 占位失败已触发 MoviePilot 订阅立即搜索",
+            "115sub 转存状态已接收",
+            "115sub 本地状态命中，已拦截 MoviePilot 下载",
+            "115sub 占位命中，已拦截 MoviePilot 下载",
+        )
+        if text.startswith(allowed_prefixes):
+            return True
+        return False
+
+    @classmethod
     def _install_log_noise_patch(cls):
         if cls._logger_patched:
             return
-        original_info = getattr(logger, "info", None)
-        original_warning = getattr(logger, "warning", None)
-        if not original_info or not original_warning:
+        original_logger = getattr(logger, "logger", None)
+        if not original_logger:
             return
 
-        def patched_info(message, *args, **kwargs):
-            if cls._should_suppress_info(message, args, kwargs):
+        def patched_logger(method, message, *args, **kwargs):
+            current_level = LoggerManager._LoggerManager__get_log_level()
+            method_level = getattr(logging, str(method).upper(), logging.INFO)
+            if method_level < current_level:
                 return None
-            return original_info(message, *args, **kwargs)
 
-        def patched_warning(message, *args, **kwargs):
-            if cls._should_suppress_warning(message, args, kwargs):
+            caller_name, plugin_name = cls._log_call_context()
+            if plugin_name == "plugin115sub" and not cls._should_keep_plugin_log(
+                method, message, args, kwargs, caller_name
+            ):
                 return None
-            return original_warning(message, *args, **kwargs)
+
+            formatted_msg = f"{caller_name} - {message}"
+            if args:
+                try:
+                    formatted_msg = formatted_msg % args
+                except (TypeError, ValueError):
+                    formatted_msg = f"{formatted_msg} {' '.join(str(arg) for arg in args)}"
+
+            logfile = Path("plugins") / f"{plugin_name}.log" if plugin_name else logger._default_log_file
+            log_file_path = log_settings.LOG_PATH / logfile
+            logger._file_handler.write_log(str(method).upper(), formatted_msg, log_file_path)
+
+            with LoggerManager._lock:
+                console_logger = logger._loggers.get(logfile)
+                if not console_logger:
+                    console_logger = LoggerManager._LoggerManager__setup_console_logger(log_file=logfile)
+                    logger._loggers[logfile] = console_logger
+
+            if hasattr(console_logger, method):
+                getattr(console_logger, method)(formatted_msg)
+            return None
 
         try:
-            setattr(logger, "info", patched_info)
-            setattr(logger, "warning", patched_warning)
-            cls._logger_patch_mode = "instance"
+            setattr(logger, "logger", patched_logger)
+            cls._logger_patch_mode = "logger"
         except Exception:
             return
-        cls._original_logger_info = original_info
-        cls._original_logger_warning = original_warning
+        cls._original_logger_logger = original_logger
         cls._logger_patched = True
 
     def _jsonable(self, value):
