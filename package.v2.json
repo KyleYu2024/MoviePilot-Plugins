@@ -4,7 +4,7 @@
     "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
     "labels": "联动",
     "version": "0.1.6",
-    "icon": "https://img.andp.cc/icons/upload/115sub-logo.png",
+    "icon": "https://raw.githubusercontent.com/KyleYu2024/MoviePilot-Plugins/main/plugins.v2/plugin115sub/115sub-logo.png",
     "author": "KyleYu",
     "level": 1,
     "history": {

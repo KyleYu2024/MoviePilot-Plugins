@@ -18,7 +18,7 @@ from app.plugins import _PluginBase
 class Plugin115Sub(_PluginBase):
     plugin_name = "115sub订阅联动"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
-    plugin_icon = "https://img.andp.cc/icons/upload/115sub-logo.png"
+    plugin_icon = "https://raw.githubusercontent.com/KyleYu2024/MoviePilot-Plugins/main/plugins.v2/plugin115sub/115sub-logo.png"
     plugin_version = "0.1.7"
     plugin_author = "KyleYu"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
