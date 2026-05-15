@@ -19,7 +19,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub订阅联动"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "https://img.andp.cc/icons/upload/115sub-logo.png"
-    plugin_version = "0.1.5"
+    plugin_version = "0.1.7"
     plugin_author = "KyleYu"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -29,6 +29,9 @@ class Plugin115Sub(_PluginBase):
     _enabled = False
     _base_url = ""
     _status_cache = {}
+    _released_placeholders = {}
+    _placeholder_timeout_seconds = 15 * 60
+    _placeholder_release_seconds = 24 * 60 * 60
     _warning_cooldown_until = {}
     _warning_cooldown_seconds = 10 * 60
     _subscribe_search_cooldown_until = {}
@@ -331,6 +334,13 @@ class Plugin115Sub(_PluginBase):
             "completed": "已入库",
             "failed": "失败",
             "cancelled": "已取消",
+            "canceled": "已取消",
+            "skip": "已跳过",
+            "skipped": "已跳过",
+            "timeout": "已超时",
+            "timed_out": "已超时",
+            "expired": "已过期",
+            "released": "已释放",
         }
         return labels.get(str(status or "").lower(), str(status or "未知"))
 
@@ -349,6 +359,19 @@ class Plugin115Sub(_PluginBase):
         if not text or text.lower() in {"none", "null"}:
             return ""
         return text
+
+    @classmethod
+    def _truthy(cls, value, default=False):
+        if value is None:
+            return bool(default)
+        if isinstance(value, bool):
+            return value
+        text = cls._clean_text(value).lower()
+        if text in {"1", "true", "yes", "y", "on", "启用", "是"}:
+            return True
+        if text in {"0", "false", "no", "n", "off", "禁用", "否"}:
+            return False
+        return bool(default)
 
     @classmethod
     def _first_text(cls, *values):
@@ -713,6 +736,11 @@ class Plugin115Sub(_PluginBase):
             error = self._request_error_summary(exc, token)
             return {"success": False, "reason": "request_failed", "message": f"请求 115sub 失败：{error}"}
 
+    def _linkage_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = dict(payload or {})
+        payload.setdefault("placeholder_timeout_seconds", self._placeholder_timeout_seconds)
+        return payload
+
     def _install_downloadchain_patch(self):
         cls = self.__class__
         if cls._downloadchain_patched:
@@ -832,7 +860,7 @@ class Plugin115Sub(_PluginBase):
                     "episodes": requested,
                     "skip_subscription_check": True,
                 }
-                check = self._query_linkage("/api/v1/moviepilot/linkage/placeholder/check", payload)
+                check = self._query_linkage("/api/v1/moviepilot/linkage/placeholder/check", self._linkage_payload(payload))
                 if not check.get("success"):
                     continue
 
@@ -840,6 +868,7 @@ class Plugin115Sub(_PluginBase):
                     self._safe_int(row.get("episode"), 0)
                     for row in check.get("rows") or []
                     if self._safe_int(row.get("episode"), 0) > 0
+                    and self._linkage_row_blocks_download(row, tmdb_id, media_type, season)
                 }
                 if not covered:
                     continue
@@ -870,7 +899,94 @@ class Plugin115Sub(_PluginBase):
 
     @staticmethod
     def _is_failed_status(status):
-        return str(status or "").strip().lower() in {"failed", "cancelled", "canceled", "deleted"}
+        return str(status or "").strip().lower() in {
+            "failed",
+            "cancelled",
+            "canceled",
+            "deleted",
+            "skip",
+            "skipped",
+            "timeout",
+            "timed_out",
+            "expired",
+            "released",
+        }
+
+    @staticmethod
+    def _is_completed_status(status):
+        return str(status or "").strip().lower() == "completed"
+
+    @classmethod
+    def _is_placeholder_status(cls, status):
+        return str(status or "").strip().lower() in {"processing", "pending", "running", "transferring"}
+
+    def _mark_placeholder_released(self, key: str):
+        self._released_placeholders[key] = time.time() + self._placeholder_release_seconds
+
+    def _clear_placeholder_release(self, key: str):
+        self._released_placeholders.pop(key, None)
+
+    def _is_placeholder_released(self, tmdb_id, media_type, season, episode):
+        key = self._status_key(tmdb_id, media_type, season, episode)
+        until = float(self._released_placeholders.get(key) or 0)
+        if until <= 0:
+            return False
+        if time.time() >= until:
+            self._released_placeholders.pop(key, None)
+            return False
+        return True
+
+    def _release_placeholder(self, key: str, row: Dict[str, Any], reason="timeout"):
+        self._status_cache.pop(key, None)
+        self._mark_placeholder_released(key)
+        logger.info(
+            "115sub 占位释放信号已接收%s，原因=%s，MoviePilot 可继续下载",
+            self._event_log_context(row),
+            reason,
+        )
+
+    def _active_cached_rows(self, tmdb_id, media_type, season, episodes):
+        active_rows = []
+        for episode in episodes:
+            if self._is_placeholder_released(tmdb_id, media_type, season, episode):
+                continue
+            key = self._status_key(tmdb_id, media_type, season, episode)
+            row = self._status_cache.get(key)
+            if not isinstance(row, dict):
+                continue
+            if self._is_completed_status(row.get("status")) or self._is_placeholder_status(row.get("status")):
+                active_rows.append(row)
+
+        return active_rows
+
+    def _linkage_row_blocks_download(self, row: Dict[str, Any], tmdb_id, media_type, season):
+        if not isinstance(row, dict):
+            return False
+        episode = self._safe_int(row.get("episode"), 0)
+        if self._is_placeholder_released(tmdb_id, media_type, season, episode):
+            return False
+
+        status = str(row.get("status") or row.get("state") or "processing").strip().lower()
+        if self._is_failed_status(status):
+            return False
+        if self._is_completed_status(status):
+            return True
+        return self._is_placeholder_status(status)
+
+    def _linkage_result_blocks_download(self, result: Dict[str, Any], payload: Dict[str, Any]):
+        rows = result.get("rows") if isinstance(result, dict) else None
+        if not rows:
+            return not all(
+                self._is_placeholder_released(payload.get("tmdb_id"), payload.get("type"), payload.get("season"), episode)
+                for episode in payload.get("episodes") or []
+            )
+
+        blocking = {
+            self._safe_int(row.get("episode"), 0)
+            for row in rows
+            if self._linkage_row_blocks_download(row, payload.get("tmdb_id"), payload.get("type"), payload.get("season"))
+        }
+        return bool(blocking)
 
     def _should_trigger_subscribe_search(self, key: str) -> bool:
         now = time.time()
@@ -944,6 +1060,11 @@ class Plugin115Sub(_PluginBase):
                         self._event_log_context({"tmdb_id": tmdb_id, "title": title, "type": media_type, "season": season, "episodes": episodes}),
                     )
                 except Exception:
+                    logger.warning(
+                        "115sub 占位释放后触发 MoviePilot 订阅立即搜索失败：订阅ID=%s%s",
+                        target_subscribe_id,
+                        self._event_log_context({"tmdb_id": tmdb_id, "title": title, "type": media_type, "season": season, "episodes": episodes}),
+                    )
                     return
 
             threading.Thread(target=run_search, name=f"plugin115sub-search-{subscribe_id}", daemon=True).start()
@@ -973,6 +1094,7 @@ class Plugin115Sub(_PluginBase):
             return {"success": False, "reason": "missing_tmdb_id"}
 
         upserted = 0
+        now = time.time()
         normalized_episodes = []
         for ep in episodes:
             try:
@@ -983,7 +1105,8 @@ class Plugin115Sub(_PluginBase):
                 continue
             if episode not in normalized_episodes:
                 normalized_episodes.append(episode)
-            self._status_cache[self._status_key(tmdb_id, media_type, season, episode)] = {
+            key = self._status_key(tmdb_id, media_type, season, episode)
+            row = {
                 "tmdb_id": tmdb_id,
                 "type": media_type,
                 "season": season,
@@ -991,15 +1114,24 @@ class Plugin115Sub(_PluginBase):
                 "status": status,
                 "title": title,
                 "updated_at": data.get("updated_at") or "",
+                "received_at": now,
                 "source": data.get("source") or "115sub",
+                "reason": data.get("reason") or data.get("release_reason") or "",
             }
+            if self._is_failed_status(status):
+                self._release_placeholder(key, row, reason=row.get("reason") or status)
+            else:
+                self._status_cache[key] = row
+                if self._is_completed_status(status):
+                    self._clear_placeholder_release(key)
             upserted += 1
         logger.info(
             "115sub 转存状态已接收%s，状态=%s",
             self._event_log_context({"tmdb_id": tmdb_id, "title": title, "type": media_type, "season": season, "episodes": episodes}),
             self._status_label(status),
         )
-        if self._is_failed_status(status):
+        refresh_subscription = self._truthy(data.get("refresh_subscription"), self._is_failed_status(status))
+        if refresh_subscription:
             self._trigger_moviepilot_subscribe_search(
                 tmdb_id=tmdb_id,
                 media_type=media_type,
@@ -1097,11 +1229,7 @@ class Plugin115Sub(_PluginBase):
             "downloader": getattr(data, "downloader", "") or "",
         }
 
-        cached_rows = [
-            self._status_cache.get(self._status_key(payload["tmdb_id"], media_type_text, season, ep))
-            for ep in episodes
-        ]
-        cached_rows = [row for row in cached_rows if row and row.get("status") in {"processing", "completed"}]
+        cached_rows = self._active_cached_rows(payload["tmdb_id"], media_type_text, season, episodes)
         if cached_rows and len(cached_rows) == len(episodes):
             completed = all(row.get("status") == "completed" for row in cached_rows)
             data.cancel = True
@@ -1119,8 +1247,19 @@ class Plugin115Sub(_PluginBase):
             logger.info("115sub 下载占位跳过：原因=%s%s", reason, self._event_log_context(payload))
             return
 
-        result = self._query_linkage("/api/v1/moviepilot/linkage/placeholder/check", payload)
-        if result.get("success") and result.get("block"):
+        released = all(
+            self._is_placeholder_released(payload["tmdb_id"], media_type_text, season, ep)
+            for ep in episodes
+        )
+        if released:
+            logger.info(
+                "115sub 占位已释放，允许 MoviePilot 下载%s",
+                self._event_log_context(payload),
+            )
+            return
+
+        result = self._query_linkage("/api/v1/moviepilot/linkage/placeholder/check", self._linkage_payload(payload))
+        if result.get("success") and result.get("block") and self._linkage_result_blocks_download(result, payload):
             data.cancel = True
             data.source = "115sub"
             data.reason = result.get("message") or "115sub 已占位"

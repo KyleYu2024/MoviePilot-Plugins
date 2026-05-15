@@ -3,11 +3,12 @@
     "name": "115sub",
     "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
     "labels": "联动",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "icon": "https://img.andp.cc/icons/upload/115sub-logo.png",
     "author": "KyleYu",
     "level": 1,
     "history": {
+      "v0.1.6": "由 115sub 判定 15 分钟入库超时并回写释放信号，MoviePilot 插件收到失败/跳过/超时后立即取消 115sub 占位。",
       "v0.1.5": "更新 115sub 插件图标。",
       "v0.1.4": "收紧 115sub 插件日志白名单，仅显示联动和占位关键日志，并改用本地图标避免图片代理噪音。",
       "v0.1.3": "调整关键日志文案，明确 MoviePilot 下载任务推送与 115sub 转存状态回写。",
