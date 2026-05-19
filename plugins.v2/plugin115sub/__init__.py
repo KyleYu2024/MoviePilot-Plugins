@@ -19,7 +19,7 @@ class Plugin115Sub(_PluginBase):
     plugin_name = "115sub订阅联动"
     plugin_desc = "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。"
     plugin_icon = "https://raw.githubusercontent.com/KyleYu2024/MoviePilot-Plugins/main/plugins.v2/plugin115sub/115sub-logo.png"
-    plugin_version = "0.1.7"
+    plugin_version = "0.1.9"
     plugin_author = "KyleYu"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "plugin115sub_"
@@ -633,6 +633,62 @@ class Plugin115Sub(_PluginBase):
         )
 
     @classmethod
+    def _download_identity_fields(cls, data):
+        return {
+            "download_hash": cls._payload_field_text(
+                data,
+                "download_hash",
+                "downloadHash",
+                "torrent_hash",
+                "torrentHash",
+                "info_hash",
+                "infoHash",
+                "hash",
+            ),
+            "download_id": cls._payload_field_text(
+                data,
+                "download_id",
+                "downloadId",
+                "downloadid",
+                "task_id",
+                "taskId",
+                "download_task_id",
+                "downloadTaskId",
+                "id",
+            ),
+            "torrent_name": cls._payload_field_text(
+                data,
+                "torrent_name",
+                "torrentName",
+                "resource_name",
+                "resourceName",
+                "name",
+                "title",
+            ),
+            "download_path": cls._payload_field_text(
+                data,
+                "download_path",
+                "downloadPath",
+                "save_path",
+                "savePath",
+                "path",
+            ),
+        }
+
+    @classmethod
+    def _enrich_download_identity(cls, data):
+        if not isinstance(data, dict):
+            return data
+        for key, value in cls._download_identity_fields(data).items():
+            if value and not cls._clean_text(data.get(key)):
+                data[key] = value
+        if not cls._clean_text(data.get("download_key")):
+            key = cls._first_text(data.get("download_hash"), data.get("download_id"))
+            if key:
+                data["download_key"] = key
+        return data
+
+    @classmethod
     def _event_log_context(cls, data):
         title = cls._payload_title(data)
         tmdb_id = cls._payload_tmdb_id(data)
@@ -1153,12 +1209,12 @@ class Plugin115Sub(_PluginBase):
         data = self._jsonable(event.event_data or {})
         if isinstance(data, dict):
             data.setdefault("event", "download.added")
+            self._enrich_download_identity(data)
         if not self._payload_tmdb_id(data):
             event_context = self._event_log_context(data)
             log_key = "event:download.added:missing_tmdb_id"
             if event_context or self._should_log_warning(log_key):
-                logger.info("115sub 原始下载任务事件缺少 TMDB ID，已等待资源下载占位链路%s", event_context)
-            return
+                logger.info("115sub 原始下载任务事件缺少 TMDB ID，已交由 115sub 按标题尝试占位%s", event_context)
         self._post("download.added", data)
 
     @eventmanager.register(EventType.DownloadDeleted)
@@ -1166,6 +1222,7 @@ class Plugin115Sub(_PluginBase):
         data = self._jsonable(event.event_data or {})
         if isinstance(data, dict):
             data.setdefault("event", "download.deleted")
+            self._enrich_download_identity(data)
         self._post("download.deleted", data)
 
     @eventmanager.register(EventType.TransferComplete)
@@ -1173,6 +1230,7 @@ class Plugin115Sub(_PluginBase):
         data = self._jsonable(event.event_data or {})
         if isinstance(data, dict):
             data.setdefault("event", "transfer.complete")
+            self._enrich_download_identity(data)
         self._post("transfer.complete", data)
 
     @eventmanager.register(ChainEventType.ResourceDownload, priority=1)
@@ -1227,6 +1285,11 @@ class Plugin115Sub(_PluginBase):
             "episodes": episodes,
             "origin": getattr(data, "origin", "") or "",
             "downloader": getattr(data, "downloader", "") or "",
+            "torrent_name": self._first_text(
+                self._field_text(meta, "org_string", "torrent_name", "name", "title"),
+                self._field_text(data, "torrent_name", "resource_name", "name", "title"),
+            ),
+            "download_path": self._field_text(data, "download_path", "save_path", "path"),
         }
 
         cached_rows = self._active_cached_rows(payload["tmdb_id"], media_type_text, season, episodes)
