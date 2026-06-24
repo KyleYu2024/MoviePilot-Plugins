@@ -1,4 +1,16 @@
 {
+  "PluginFlowLink": {
+    "name": "FlowLink",
+    "description": "MoviePilot 整理完成后，将本次新增文件精准通知 FlowLink 上传。",
+    "labels": "联动,上传",
+    "version": "0.0.1",
+    "icon": "https://img.andp.cc/icons/upload/fl-logo.png",
+    "author": "KyleYu",
+    "level": 1,
+    "history": {
+      "v0.0.1": "新增 FlowLink 上传联动插件，支持整理完成后按文件路径精准通知上传，并支持 MoviePilot 到 FlowLink 的路径前缀映射。"
+    }
+  },
   "Plugin115Sub": {
     "name": "115sub",
     "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
