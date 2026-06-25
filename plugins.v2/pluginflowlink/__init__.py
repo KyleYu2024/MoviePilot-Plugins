@@ -14,7 +14,7 @@ class PluginFlowLink(_PluginBase):
     plugin_name = "FlowLink"
     plugin_desc = "MoviePilot 整理完成后，将本次新增文件精准通知 FlowLink 上传。"
     plugin_icon = "https://img.andp.cc/icons/upload/fl-logo.png"
-    plugin_version = "0.0.1"
+    plugin_version = "0.0.2"
     plugin_author = "KyleYu"
     author_url = "https://github.com/KyleYu2024/MoviePilot-Plugins"
     plugin_config_prefix = "pluginflowlink_"
@@ -180,97 +180,6 @@ class PluginFlowLink(_PluginBase):
                                     }
                                 ],
                             }
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "require_existing_file",
-                                            "label": "只通知已存在文件",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "expand_directories",
-                                            "label": "事件只有目录时展开目录",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "fallback_scan",
-                                            "label": "精确失败后回退扫描",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "precise_endpoint",
-                                            "label": "精确上传接口",
-                                            "placeholder": "/api/transfer/upload/files",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "scan_endpoint",
-                                            "label": "扫描回退接口",
-                                            "placeholder": "/api/transfer/upload/scan",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "timeout",
-                                            "label": "请求超时秒数",
-                                            "type": "number",
-                                        },
-                                    }
-                                ],
-                            },
                         ],
                     },
                 ],

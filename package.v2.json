@@ -3,11 +3,12 @@
     "name": "FlowLink",
     "description": "MoviePilot 整理完成后，将本次新增文件精准通知 FlowLink 上传。",
     "labels": "联动,上传",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "icon": "https://img.andp.cc/icons/upload/fl-logo.png",
     "author": "KyleYu",
     "level": 1,
     "history": {
+      "v0.0.2": "隐藏高级精确通知参数，默认只通知已存在文件、不展开目录、不失败回退扫描，并继续使用 FlowLink 精确上传接口。",
       "v0.0.1": "新增 FlowLink 上传联动插件，支持整理完成后按文件路径精准通知上传，并支持 MoviePilot 到 FlowLink 的路径前缀映射。"
     }
   },
