@@ -838,6 +838,60 @@ class Plugin115Sub(_PluginBase):
         return default if number is None else number
 
     @classmethod
+    def _season_from_text(cls, *values):
+        text = " ".join(cls._clean_text(value) for value in values if cls._clean_text(value))
+        if not text:
+            return None
+        patterns = [
+            r"(?i)\bS(?:eason)?\s*0*(\d{1,3})(?=\D|$)",
+            r"第\s*0*(\d{1,3})\s*季",
+            r"""["']season["']\s*[:=]\s*["']?0*(\d{1,3})""",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            try:
+                return int(match.group(1))
+            except Exception:
+                return None
+        return None
+
+    @classmethod
+    def _positive_payload_season(cls, source):
+        for value in cls._payload_field_values(source, "season", "season_number", "season_num", "begin_season"):
+            number = cls._first_int(value)
+            if number and number > 0:
+                return number
+        return None
+
+    @classmethod
+    def _resource_download_season(cls, media, meta, data):
+        for value in (
+            getattr(meta, "begin_season", None),
+            getattr(meta, "season", None),
+            getattr(meta, "season_number", None),
+            getattr(media, "season", None),
+            getattr(media, "season_number", None),
+        ):
+            number = cls._first_int(value)
+            if number and number > 0:
+                return number
+
+        text_season = cls._season_from_text(
+            cls._field_text(meta, "org_string", "torrent_name", "name", "title"),
+            cls._field_text(data, "torrent_name", "resource_name", "name", "title", "origin"),
+        )
+        if text_season is not None:
+            return text_season
+
+        for source in (meta, media, data):
+            season = cls._positive_payload_season(source)
+            if season:
+                return season
+        return 0
+
+    @classmethod
     def _season_missing_episodes(cls, not_exist):
         episodes = getattr(not_exist, "episodes", None) or []
         if episodes:
@@ -1262,9 +1316,9 @@ class Plugin115Sub(_PluginBase):
             if ep_num > 0:
                 episodes.append(ep_num)
 
-        season = getattr(meta, "begin_season", None) or getattr(media, "season", None) or 0
         media_type = getattr(media, "type", "")
         media_type_text = getattr(media_type, "value", None) or str(media_type or "")
+        season = self._resource_download_season(media, meta, data)
         if media_type_text.lower() in {"movie", "电影"}:
             season = 0
             episodes = [0]
