@@ -16,11 +16,12 @@
     "name": "115sub",
     "description": "将 MoviePilot 与 115sub 进行订阅、下载、占位和完成态双向联动。",
     "labels": "联动",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "icon": "https://raw.githubusercontent.com/KyleYu2024/MoviePilot-Plugins/main/plugins.v2/plugin115sub/115sub-logo.png",
     "author": "KyleYu",
     "level": 1,
     "history": {
+      "v0.1.10": "修复多集下载事件缺少结构化季数时的季号识别，优先从种子名和事件上下文提取 Sxx/Season 信息，避免占位落到 S00。",
       "v0.1.9": "补充下载任务身份字段，支持 115sub 按具体 MoviePilot 下载任务精确保持或释放占位。",
       "v0.1.8": "原始下载事件缺少 TMDB ID 时仍推送给 115sub，由 115sub 按标题尝试匹配订阅并创建 MoviePilot 占位。",
       "v0.1.7": "补齐插件内部版本号。",
